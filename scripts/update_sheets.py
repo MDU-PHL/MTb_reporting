@@ -31,8 +31,6 @@ SHAREPOINT_PATH = "/home/mdu/analysis/surveillance/MTB_report/TBsharepoint.xlsx"
 # Maps raw header names in the supplier's input file -> internal column names.
 # Order does not matter; only header labels are used.
 COLUMN_RENAME_MAP = {
-    "Batch #":           "Batch #",
-    "Isolate #":         "Isolate #",
     "Submitters ID":     "VIDRL Lab No.",
     "Date coll":         "Specimen collection date",
     "MDU sample ID":     "MDU ID",
@@ -254,10 +252,7 @@ def main() -> None:
     # --- Load master files ---
     logging.info("Loading master files ...")
     metadata = pd.read_excel(args.metadata)
-    sharepoint = pd.read_excel(
-        args.sharepoint,
-        parse_dates=["DOB", "Specimen collection date"],
-    )
+    sharepoint = pd.read_excel(args.sharepoint)
     logging.info(f"  tb_metadata  : {len(metadata)} rows x {len(metadata.columns)} columns")
     logging.info(f"  TBsharepoint : {len(sharepoint)} rows x {len(sharepoint.columns)} columns")
 
