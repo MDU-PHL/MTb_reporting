@@ -124,7 +124,8 @@ def parse_args():
         epilog=(
             "Examples:\n"
             "  python3 MTB_new_report.py -d 2025-09-01\n"
-            "  python3 MTB_new_report.py --date 2025-09-01 --verbose"
+            "  python3 MTB_new_report.py --date 2025-09-01 --verbose\n"
+            "  python3 MTB_new_report.py -d 2025-09-01 -c /path/to/cleptr_db -a /path/to/tb_dev -l 1 2 3 4"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -133,6 +134,25 @@ def parse_args():
         dest="report_date",
         default="2025-08-19",
         help="Report date suffix (YYYY-MM-DD). Used to read lineage files named lineage_X.<date>.csv",
+    )
+    parser.add_argument(
+        "-c", "--cleptr-db-path", "--report-folder",
+        dest="cleptr_db_path",
+        default=REPORT_FOLDER,
+        help=f"Path to cleptr_db folder containing Lineage_X subdirectories (default: {REPORT_FOLDER}).",
+    )
+    parser.add_argument(
+        "-a", "--analysis-path",
+        dest="analysis_path",
+        default=ANALYSIS_FOLDER,
+        help=f"Path to analysis folder containing lineage_checked.csv and per-lineage report directories (default: {ANALYSIS_FOLDER}).",
+    )
+    parser.add_argument(
+        "-l", "--lineages",
+        dest="lineages",
+        nargs="+",
+        default=LINEAGES,
+        help=f"List of lineages to process (default: {' '.join(LINEAGES)}).",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -153,9 +173,20 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     report_date = args.report_date
+    cleptr_db_path = args.cleptr_db_path
+    analysis_path = args.analysis_path
+
+    lineages = []
+    for item in args.lineages:
+        if "," in item:
+            lineages.extend([x.strip() for x in item.split(",") if x.strip()])
+        else:
+            lineages.append(item.strip())
+
     log.info(f"Starting MTB_new_report.py | report_date={report_date}")
-    log.debug(f"REPORT_FOLDER={REPORT_FOLDER}")
-    log.debug(f"ANALYSIS_FOLDER={ANALYSIS_FOLDER}")
+    log.debug(f"cleptr_db_path={cleptr_db_path}")
+    log.debug(f"analysis_path={analysis_path}")
+    log.debug(f"lineages={lineages}")
 
     # -----------------------------------------------------------------------
     # 0. Pre-flight checks
@@ -202,7 +233,7 @@ def main():
     # -----------------------------------------------------------------------
     # 3. Load lineage_checked.csv and merge
     # -----------------------------------------------------------------------
-    lins_path = f"{ANALYSIS_FOLDER}/lineage_checked.csv"
+    lins_path = f"{analysis_path}/lineage_checked.csv"
     log.info(f"Loading lineage data: {lins_path}")
     lins = pandas.read_csv(lins_path)
     lins = lins.rename(columns={"Seq_id": "Seq_ID"})
@@ -278,11 +309,11 @@ def main():
     save_altair_chart(epi_chart, "epi.png")
 
     # -----------------------------------------------------------------------
-    # 5. Load cleptr cluster CSVs (Lineage 1-4) — log exact file paths
+    # 5. Load cleptr cluster CSVs — log exact file paths
     # -----------------------------------------------------------------------
     ct = pandas.DataFrame()
-    for lin in LINEAGES:
-        csv_path = f"{REPORT_FOLDER}/Lineage_{lin}/lineage_{lin}.{report_date}.csv"
+    for lin in lineages:
+        csv_path = f"{cleptr_db_path}/Lineage_{lin}/lineage_{lin}.{report_date}.csv"
         log.info(f"Loading cleptr cluster file: {csv_path}")
         if not os.path.exists(csv_path):
             log.warning(f"Cluster file not found, skipping: {csv_path}")
@@ -314,7 +345,8 @@ def main():
         elif sub_cluster == "UC":
             id_info.append([m_id, cluster, "PR", f"{row['Lineage']}-Clst-{cluster}-PR"])
         else:
-            sub_dict = cluster_dict.get(cluster, {})
+            cluster_key = f"{row['Lineage']}_{cluster}"
+            sub_dict = cluster_dict.get(cluster_key, {})
             new_name = sub_dict.get(sub_cluster, "x")
             if new_name == "x":
                 names = list(sub_dict.values())
@@ -324,7 +356,7 @@ def main():
                     names.sort()
                     new_name = str(int(names[-1]) + 1)
                 sub_dict[sub_cluster] = new_name
-            cluster_dict[cluster] = sub_dict
+            cluster_dict[cluster_key] = sub_dict
             id_info.append([m_id, cluster, new_name, f"{row['Lineage']}-Clst-{cluster}-{new_name}"])
 
     new_ct = pandas.DataFrame(id_info, columns=title)
@@ -394,15 +426,15 @@ def main():
         if u == "UC":
             continue
 
-        # All isolates (new + historical) in this cluster — intentional for context
-        d = tab[tab["Cluster_poss"] == u]
-
-        ln = list(d["Phylogenetic lineage"].unique())
+        # Only process lineages that actually contain new isolates in this cluster
+        ln = list(new_tab[new_tab["Cluster_poss"] == u]["Phylogenetic lineage"].dropna().unique())
         for l in ln:
             log.info(f"Processing cluster={u}  lineage={l}")
             sub_ln = f"Lineage_{l.split()[-1]}"
+
+            # All isolates (new + historical) in THIS cluster within THIS lineage
+            d = tab[(tab["Cluster_poss"] == u) & (tab["Phylogenetic lineage"] == l)]
             x = d.rename(columns={"Seq_ID": "MDU ID", "Cluster_ID": "Cluster ID"})
-            x = x[x["Phylogenetic lineage"] == l]
             seqs = list(x["MDU ID"].unique())
             log.debug(f"  All isolates in cluster: {seqs}")
 
@@ -421,7 +453,7 @@ def main():
 
             # --- SNP distance summary ---
             ds = pandas.read_csv(
-                f"{ANALYSIS_FOLDER}/{sub_ln}/report/distances.tab", sep="\t"
+                f"{analysis_path}/{sub_ln}/report/distances.tab", sep="\t"
             )
             new_seqs = [
                 sk for sk in seqs
@@ -524,7 +556,7 @@ def main():
                 node_id = dict(zip(x["MDU ID"], x["PHESS ID"]))
                 log.debug(f"  node_id dict: {node_id}")
 
-                tree = toytree.tree(f"{ANALYSIS_FOLDER}/{sub_ln}/report/core.newick")
+                tree = toytree.tree(f"{analysis_path}/{sub_ln}/report/core.newick")
                 tree = tree.drop_tips(
                     [node for node in tree.get_tip_labels() if node not in seqs]
                 )
