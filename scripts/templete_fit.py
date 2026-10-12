@@ -275,12 +275,19 @@ if __name__ == "__main__":
         dist_list = dis_summary_table_to_list(df_dist)
         if len(summary_list) == 2:
             pairs_dict = {}
+            pairs_dict["Lineage"] = lineage
+            pairs_dict["lineage"] = lineage
+            pairs_dict["cluster"] = cluster
+            pairs_dict["name"] = f"Clst-{cluster}"
             pairs_dict["pairs_table"] = summary_list
             pairs_dict["distance_summary"] = dist_list
             pairs_for_report.append(pairs_dict)
         elif len(summary_list) > 2:
             clusters_dict = {}
             cluster_change_id.append(f"Clst-{cluster}")
+            clusters_dict["Lineage"] = lineage
+            clusters_dict["lineage"] = lineage
+            clusters_dict["cluster"] = cluster
             clusters_dict["isolates_table"] = summary_list
             clusters_dict["distance_summary"] = dist_list
             clusters_dict["name"] = f"Clst-{cluster}"
