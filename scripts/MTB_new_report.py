@@ -579,7 +579,8 @@ def main():
                         node.add_feature("size", 0)
 
                 # Export filtered tree with modified tip labels
-                filtered_tree_path = f"{u}_{l}_core_filtered.newick"
+                l_safe = l.replace(" ", "_")
+                filtered_tree_path = f"{u}_{l_safe}_core_filtered.newick"
                 with open(filtered_tree_path, "w") as output_file:
                     output_file.write(tree.write())
 
@@ -607,8 +608,8 @@ def main():
                 )
                 axes.show = False
 
-                tree_svg = f"{u}_{l}_tree.svg"
-                tree_png = f"{u}_{l}_tree.png"
+                tree_svg = f"{u}_{l_safe}_tree.svg"
+                tree_png = f"{u}_{l_safe}_tree.png"
                 toyplot.svg.render(canvas, tree_svg)
                 drawing = svg2rlg(tree_svg)
                 renderPM.drawToFile(drawing, tree_png, fmt="PNG")
