@@ -146,9 +146,10 @@ def dis_summary_table_to_list(df):
     return distance_list
 
 
-def get_versions():
+def get_versions(path='../software_versions.tab'):
 
-    with open('../software_versions.tab', 'r') as f:
+    file_present(path)
+    with open(path, 'r') as f:
         versions = f.read().split('\n')
     return versions[1], versions[4]
 
@@ -215,7 +216,8 @@ if __name__ == "__main__":
         description="Generate a DOCX MTB surveillance report from CSV summary and images.",
         epilog=(
             "Example:\n"
-            "  python3 templete_fit.py -r R2025-015032\n\n"
+            "  python3 templete_fit.py -r R2025-015032\n"
+            "  python3 templete_fit.py -r R2025-015032 -c ../tb_report.toml -t /path/to/tb_template.docx -s ../software_versions.tab\n\n"
             "This script reads ./new_summary_table.csv, Uncluster_summary.csv, cluster CSVs and images\n"
             "and produces <report_id>_Mtb_surveillance.docx using the template defined in the script."
         ),
@@ -223,20 +225,28 @@ if __name__ == "__main__":
     )
     parser.add_argument("-r", "--report", dest="report_id", default="R2025-015032",
                         help="Report ID (e.g. R2025-015032). Used to name the output docx.")
+    parser.add_argument("-c", "--config", "--toml-path", dest="config_path", default="../tb_report.toml",
+                        help="Path to TOML configuration file (default: ../tb_report.toml).")
+    parser.add_argument("-t", "--template", "--template-path", dest="template_path",
+                        default="/home/mdu/analysis/surveillance/MTB_report/tb_template.docx",
+                        help="Path to master template DOCX file (default: /home/mdu/analysis/surveillance/MTB_report/tb_template.docx).")
+    parser.add_argument("-s", "--software-versions", "--software-versions-path", dest="software_versions_path",
+                        default="../software_versions.tab",
+                        help="Path to software versions tab file (default: ../software_versions.tab).")
     args = parser.parse_args()
 
     report_id = args.report_id
     LOGGER.info(f"Starting report generation for {report_id}")
-    config_path = "../tb_report.toml"
+    config_path = args.config_path
     config_dict = open_config(config_path)
     check_config(config_dict)
     report_dict = initialise_report_dict(config_dict, report_id)
     reference = 'Mycobacterium tuberculosis H37Rv, complete genome'
-    snippy_version, iqtree_version = get_versions()
+    snippy_version, iqtree_version = get_versions(args.software_versions_path)
     report_dict['reference_name'] = reference
     report_dict['snippy_version'] = snippy_version
     report_dict['iqtree_version'] = iqtree_version
-    template_file = "/home/mdu/analysis/surveillance/MTB_report/tb_template.docx"
+    template_file = args.template_path
     template = generate_docx_template(template_file=template_file)
 
     new_isolates_number, summary_table, following_list, change_in_report = read_summary_table("./new_summary_table.csv")
@@ -275,7 +285,14 @@ if __name__ == "__main__":
             clusters_dict["distance_summary"] = dist_list
             clusters_dict["name"] = f"Clst-{cluster}"
             clusters_dict["historyplot"] = InlineImage(template, os.path.join(cwd, f"Lineage_{lineage}_{cluster}_his.png"), Cm(10))
-            clusters_dict["tree"] =  InlineImage(template, os.path.join(cwd, f"{cluster}_Lineage {lineage}_tree.png"), Cm(10))
+            tree_png = os.path.join(cwd, f"{cluster}_Lineage_{lineage}_tree.png")
+            if not os.path.exists(tree_png):
+                legacy_tree_png = os.path.join(cwd, f"{cluster}_Lineage {lineage}_tree.png")
+                if os.path.exists(legacy_tree_png):
+                    tree_png = legacy_tree_png
+                else:
+                    LOGGER.warning(f"Tree image not found: {tree_png}")
+            clusters_dict["tree"] = InlineImage(template, tree_png, Cm(10))
             clusters_for_report.append(clusters_dict)
     number_of_new_pair = len(pairs_for_report)
     number_of_change_cluster = len(clusters_for_report)
